@@ -53,13 +53,13 @@ impl Router {
 }
 
 #[macro_export]
-macro_rules! boxed_f{
+macro_rules! ep_wrap{
     ($f:expr) => {
         {
-            fn boxed_f<'a>(req: HttpRequest<'a>) -> Pin<Box<dyn Future<Output = HttpResult> + 'a + Send>>{
+            fn ep_wrap_f<'a>(req: HttpRequest<'a>) -> Pin<Box<dyn Future<Output = HttpResult> + 'a + Send>>{
                 Box::pin($f(req))
             }
-            boxed_f
+            ep_wrap_f
         }
     };
 }

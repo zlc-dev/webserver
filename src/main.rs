@@ -23,8 +23,8 @@ async fn notfound(req: HttpRequest<'_>) -> HttpResult {
 async fn main()  {
     let app = Application::new();
     app.listen_tcp("127.0.0.1:8000").await.unwrap()
-        .register("/hello", Arc::new(boxed_f!(hello))).unwrap()
-        .register("/hello/{}", Arc::new(boxed_f!(hello))).unwrap()
-        .register("{a}", Arc::new(boxed_f!(notfound))).unwrap()
+        .register("/hello", Arc::new(ep_wrap!(hello))).unwrap()
+        .register("/hello/{}", Arc::new(ep_wrap!(hello))).unwrap()
+        .register("{a}", Arc::new(ep_wrap!(notfound))).unwrap()
         .run().await;
 }
