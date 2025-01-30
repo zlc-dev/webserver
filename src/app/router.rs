@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::io::AsyncBufRead;
-use crate::http::{HttpRequest, HttpRequestLine, HttpResponse, Method};
+use crate::http::{HttpRequest, HttpResponse, Method};
 use super::{EndPoint, Pattern, RouteError};
 
 #[derive(Clone, Copy)]
@@ -48,23 +48,18 @@ impl Router {
         }
     }
 
-    pub async fn handle(&self, mut buf_reader: impl AsyncBufRead + Unpin + Send) -> Result<HttpResponse, RouteError> {
-
-        let request_line = HttpRequestLine::from_async_stream(&mut buf_reader).await.map_err(|e| { RouteError::ReqError(e) })?;
-
+    pub async fn routing(&self, req: &mut HttpRequest<'_>) -> Result<HttpResponse, RouteError> {
         for route in &self.routes {
-            if !route.methods.contains(request_line.method) {
+            if !route.methods.contains(req.header.method) {
                 continue;
             }
-            if let Some(args) = route.pat.match_url(&request_line.url) {
-                let mut req = HttpRequest::create(&request_line, args, &mut buf_reader);
-                let res = route.next.handle(&mut req).await
+            if let Some(captures) = route.pat.match_url(&req.header.url) {
+                let res = route.next.handle(req, captures).await
                                     .map_err(|e| { RouteError::HandleError(e) })?;
                 return Ok(res);
             }
         }
-        
-        Ok(HttpResponse::create_404_not_found())
+        Err(RouteError::NotFound)
     }
 
     pub fn register(&mut self, pattern: &str, handle: Arc<dyn EndPoint>, methods: MethodSet) -> Option<&mut Self> {

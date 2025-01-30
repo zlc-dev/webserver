@@ -2,15 +2,15 @@ mod app;
 mod http;
 
 use std::{future::Future, pin::Pin, sync::Arc};
-use http::{HttpRequest, HttpResponse};
+ use http::{HttpRequest, HttpResponse};
 use app::{HandleError, HttpResult, Application};
 
-async fn hello<'a>(req: &'a mut HttpRequest<'_>) -> HttpResult {
+async fn hello(req: &mut HttpRequest<'_>, captures: Vec<&'_ str>) -> HttpResult {
     // println!("{:?}", &req.get_headers().await.map_err(|e| { HandleError::ReqError(e) })?);
     Ok(HttpResponse::from_html_file("./asset/hello.html").await)
 }
 
-async fn notfound<'a>(req: &'a mut HttpRequest<'_>) -> HttpResult {
+async fn notfound(req: &mut HttpRequest<'_>, captures: Vec<&'_ str>) -> HttpResult {
     // println!("{:?}", &req);
     Ok(HttpResponse{status_code:404, status_msg: "Not Found".to_string(), ..HttpResponse::from_html_file("./asset/notfound.html").await})
 }

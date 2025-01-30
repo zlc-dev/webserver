@@ -9,11 +9,12 @@ pub enum HandleError {
 #[derive(Debug)]
 pub enum RouteError {
     HandleError(HandleError),
-    ReqError(ReqError),
+    NotFound,
 }
 
 #[derive(Debug)]
 pub enum ProcError {
+    ReqError(ReqError),
     RouteError(RouteError),
     IoError(tokio::io::Error),
 }

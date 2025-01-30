@@ -52,47 +52,46 @@ impl Display for Method {
 }
 
 #[derive(Debug)]
+enum HttpVersion {
+    HTTP1_0,
+    HTTP1_1,
+}
+
+impl HttpVersion {
+    pub fn from_str(s: &str) -> Option<HttpVersion> {
+        match s {
+            "HTTP/1.0" => Some(HttpVersion::HTTP1_0),
+            "HTTP/1.1" => Some(HttpVersion::HTTP1_1),
+            _ => None
+        }
+    } 
+}
+
+#[derive(Debug)]
 pub enum ReqError {
     IOError(std::io::Error),
     FmtError,
 }
 
-pub struct HttpRequest<'a> {
-    pub request_line: &'a HttpRequestLine,
-    pub captures: Vec<&'a str>,
-    headers: Option<HashMap<String, String>>,
-    body: Option<Vec<u8>>,
-    buf_reader: &'a mut (dyn AsyncBufRead + Unpin + Send), 
-}
-
-unsafe impl<'a> Sync for HttpRequest<'a> {
-    
-}
-
-impl Debug for HttpRequest<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HttpRequest").field("request_line", &self.request_line).field("captures", &self.captures).field("headers", &self.headers).field("body", &self.body).finish()
-    }
-}
-
 #[derive(Debug)]
-pub struct HttpRequestLine {
+pub struct HttpRequestHeader {
     pub method: Method,
     pub url: String,
-    pub version: String,
+    pub version: HttpVersion,
+    pub paras: HashMap<String, String>,
 }
 
-impl HttpRequestLine {
-
-    fn new() -> Self {
-        HttpRequestLine {
+impl HttpRequestHeader {
+    pub fn new() -> Self {
+        HttpRequestHeader {
             method: Method::GET,
             url: String::new(),
-            version: String::new(),
+            version: HttpVersion::HTTP1_1,
+            paras: HashMap::new(),
         }
     }
 
-    pub async fn from_async_stream(buf_reader: &mut (impl AsyncBufRead + Unpin)) -> Result<Self, ReqError> {
+    pub async fn from_async_stream(buf_reader: &'_ mut (impl AsyncBufRead + Unpin + Send)) -> Result<Self, ReqError> {
     
         let mut request_line_buf = Vec::<u8>::with_capacity(1024);
 
@@ -104,52 +103,63 @@ impl HttpRequestLine {
         }
 
         let mut split = request_line.split_ascii_whitespace();
-        let mut req = HttpRequestLine::new();
+        let mut req = HttpRequestHeader::new();
         req.method = Method::from_str(split.next().ok_or(ReqError::FmtError)?).ok_or(ReqError::FmtError)?;
         req.url = split.next().ok_or(ReqError::FmtError)?.to_string();
-        req.version = split.next().ok_or(ReqError::FmtError)?.to_string();
+        req.version = HttpVersion::from_str(split.next().ok_or(ReqError::FmtError)?).ok_or(ReqError::FmtError)?;
+
+        loop {
+            let mut header_buf = Vec::<u8>::new();
+            let s = buf_reader.read_until_crlf(&mut header_buf).await.map_err(|e| { ReqError::IOError(e) })?;
+            if s == 2 {
+                break;
+            }
+            let header_line ;
+            unsafe {
+                header_line = String::from_utf8_unchecked(header_buf);
+            }
+            let mut split = header_line.splitn(2, ':');
+            let k = split.next().ok_or(ReqError::FmtError)?;
+            let v = split.next().ok_or(ReqError::FmtError)?;
+            req.paras.insert(
+                k.to_string(),
+                v.trim().to_string()
+            );
+        }
         
         Ok(req)
     }
+
+
+
 }
+
+pub struct HttpRequest<'a> {
+    pub header: &'a HttpRequestHeader,
+    url_paras: Option<Vec<&'a str>>,
+    body: Option<Vec<u8>>,
+    buf_reader: &'a mut (dyn AsyncBufRead + Unpin + Send), 
+}
+
+unsafe impl<'a> Sync for HttpRequest<'a> {
+    
+}
+
+impl Debug for HttpRequest<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpRequest").field("header", &self.header).field("url_paras", &self.url_paras).field("body", &self.body).finish()
+    }
+}
+
 
 impl<'a>  HttpRequest<'a> {
     
-    pub fn create(request_line: &'a HttpRequestLine, captures: Vec<&'a str>, rx: &'a mut (impl AsyncBufRead + Unpin + Send)) -> HttpRequest<'a>{
+    pub fn new(header:&'a HttpRequestHeader ,rx: &'a mut (impl AsyncBufRead + Unpin + Send)) -> HttpRequest<'a>{
         HttpRequest {
-            request_line,
-            captures,
+            header,
+            url_paras: None,
             buf_reader: rx,
-            headers: None,
             body: None,
         }
     }
-
-    pub async fn get_headers(&mut self) -> Result<&HashMap<String, String>, ReqError> {
-        if let Some(ref h) = self.headers {
-            return Ok(h);
-        } else {
-            let mut headers = HashMap::new();
-            loop {
-                let mut header_buf = Vec::<u8>::new();
-                let s = self.buf_reader.read_until_crlf(&mut header_buf).await.map_err(|e| { ReqError::IOError(e) })?;
-                if s == 2 {
-                    break;
-                }
-                let header_line ;
-                unsafe {
-                    header_line = String::from_utf8_unchecked(header_buf);
-                }
-                let mut split = header_line.splitn(2, ':');
-                let k = split.next().ok_or(ReqError::FmtError)?;
-                let v = split.next().ok_or(ReqError::FmtError)?;
-                headers.insert(
-                    k.to_string(),
-                    v.trim().to_string()
-                );
-            }
-            Ok(self.headers.get_or_insert(headers))
-        }
-    }
-
 }

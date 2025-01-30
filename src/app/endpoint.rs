@@ -7,7 +7,7 @@ pub type HttpResult = Result<HttpResponse, super::HandleError>;
 
 #[async_trait]
 pub trait EndPoint: Send + Sync + 'static {
-    async fn handle<'a, 'b>(&self, req: &'a mut HttpRequest<'b> ) -> HttpResult;
+    async fn handle<'a, 'b>(&self, req: &'a mut HttpRequest<'b>, captures: Vec<&'b str> ) -> HttpResult;
 }
 
 
@@ -19,10 +19,11 @@ where
         + 'static
         + for<'a, 'b> Fn(
             &'a mut HttpRequest<'b>,
+            Vec<&'b str>
         ) -> Pin<Box<dyn Future<Output = HttpResult> + 'a + Send>>,
 {
-    async fn handle<'a, 'b>(&self, req: &'a mut HttpRequest<'b>) -> HttpResult {
-        (self)(req).await
+    async fn handle<'a, 'b>(&self, req: &'a mut HttpRequest<'b>, captures: Vec<&'b str>) -> HttpResult {
+        (self)(req, captures).await
     }
 }
 
@@ -30,8 +31,8 @@ where
 macro_rules! ep_wrap{
     ($f:expr) => {
         {
-            fn ep_wrap_f<'a, 'b>(req: &'a mut HttpRequest<'b>) -> Pin<Box<dyn Future<Output = HttpResult> + 'a + Send>>{
-                Box::pin($f(req))
+            fn ep_wrap_f<'a, 'b>(req: &'a mut HttpRequest<'b>, captures: Vec<&'b str>) -> Pin<Box<dyn Future<Output = HttpResult> + 'a + Send>>{
+                Box::pin($f(req, captures))
             }
             Arc::new(ep_wrap_f)
         }
