@@ -6,17 +6,13 @@ use http::{HttpRequest, HttpResponse};
 use app::{HandleError, HttpResult, Application};
 
 async fn hello<'a>(req: &'a mut HttpRequest<'_>) -> HttpResult {
-    println!("{:?}", &req.get_headers().await.map_err(|e| { HandleError::ReqError(e) })?);
+    // println!("{:?}", &req.get_headers().await.map_err(|e| { HandleError::ReqError(e) })?);
     Ok(HttpResponse::from_html_file("./asset/hello.html").await)
 }
 
 async fn notfound<'a>(req: &'a mut HttpRequest<'_>) -> HttpResult {
-    println!("{:?}", &req);
+    // println!("{:?}", &req);
     Ok(HttpResponse{status_code:404, status_msg: "Not Found".to_string(), ..HttpResponse::from_html_file("./asset/notfound.html").await})
-}
-
-fn test<'a>(s: &'a str) -> &'a str {
-    s.trim()
 }
 
 #[tokio::main]
