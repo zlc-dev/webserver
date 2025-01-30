@@ -1,11 +1,11 @@
 use std::{collections::HashMap, fmt::{Debug, Display}};
 
-use tokio::io::{AsyncRead, BufReader};
+use tokio::io::{AsyncRead, AsyncBufRead};
 
 use super::AsyncBufReadUtilCrlf;
 
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Method {
     GET,
     POST,
@@ -60,9 +60,13 @@ pub enum ReqError {
 pub struct HttpRequest<'a> {
     pub request_line: &'a HttpRequestLine,
     pub captures: Vec<&'a str>,
-    pub headers: Option<HashMap<String, String>>,
-    pub body: Option<Vec<u8>>,
-    pub rx: &'a mut (dyn AsyncRead + Unpin + Send), 
+    headers: Option<HashMap<String, String>>,
+    body: Option<Vec<u8>>,
+    buf_reader: &'a mut (dyn AsyncBufRead + Unpin + Send), 
+}
+
+unsafe impl<'a> Sync for HttpRequest<'a> {
+    
 }
 
 impl Debug for HttpRequest<'_> {
@@ -88,10 +92,8 @@ impl HttpRequestLine {
         }
     }
 
-    pub async fn from_async_stream(rx: &mut (impl AsyncRead + Unpin)) -> Result<Self, ReqError> {
-        
-        let mut buf_reader = BufReader::new(rx);
-
+    pub async fn from_async_stream(buf_reader: &mut (impl AsyncBufRead + Unpin)) -> Result<Self, ReqError> {
+    
         let mut request_line_buf = Vec::<u8>::with_capacity(1024);
 
         buf_reader.read_until_crlf(&mut request_line_buf).await.map_err(|e| {ReqError::IOError(e)})?;
@@ -113,13 +115,41 @@ impl HttpRequestLine {
 
 impl<'a>  HttpRequest<'a> {
     
-    pub fn create(request_line: &'a HttpRequestLine, captures: Vec<&'a str>, rx: &'a mut (impl AsyncRead + Unpin + Send)) -> HttpRequest<'a>{
+    pub fn create(request_line: &'a HttpRequestLine, captures: Vec<&'a str>, rx: &'a mut (impl AsyncBufRead + Unpin + Send)) -> HttpRequest<'a>{
         HttpRequest {
             request_line,
             captures,
-            rx,
+            buf_reader: rx,
             headers: None,
             body: None,
         }
     }
+
+    pub async fn get_headers(&mut self) -> Result<&HashMap<String, String>, ReqError> {
+        if let Some(ref h) = self.headers {
+            return Ok(h);
+        } else {
+            let mut headers = HashMap::new();
+            loop {
+                let mut header_buf = Vec::<u8>::new();
+                let s = self.buf_reader.read_until_crlf(&mut header_buf).await.map_err(|e| { ReqError::IOError(e) })?;
+                if s == 2 {
+                    break;
+                }
+                let header_line ;
+                unsafe {
+                    header_line = String::from_utf8_unchecked(header_buf);
+                }
+                let mut split = header_line.splitn(2, ':');
+                let k = split.next().ok_or(ReqError::FmtError)?;
+                let v = split.next().ok_or(ReqError::FmtError)?;
+                headers.insert(
+                    k.to_string(),
+                    v.trim().to_string()
+                );
+            }
+            Ok(self.headers.get_or_insert(headers))
+        }
+    }
+
 }
