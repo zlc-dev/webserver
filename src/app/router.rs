@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use tokio::io::AsyncBufRead;
 use crate::http::{HttpRequest, HttpResponse, Method};
 use super::{EndPoint, Pattern, RouteError};
 
@@ -50,10 +49,10 @@ impl Router {
 
     pub async fn routing(&self, req: &mut HttpRequest<'_>) -> Result<HttpResponse, RouteError> {
         for route in &self.routes {
-            if !route.methods.contains(req.header.method) {
-                continue;
-            }
             if let Some(captures) = route.pat.match_url(&req.header.url) {
+                if !route.methods.contains(req.header.method) {
+                    return Err(RouteError::MethodNotAllowed);
+                }
                 let res = route.next.handle(req, captures).await
                                     .map_err(|e| { RouteError::HandleError(e) })?;
                 return Ok(res);

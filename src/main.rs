@@ -2,11 +2,11 @@ mod app;
 mod http;
 
 use std::{future::Future, pin::Pin, sync::Arc};
- use http::{HttpRequest, HttpResponse};
+use http::{HttpRequest, HttpResponse};
 use app::{HandleError, HttpResult, Application};
 
 async fn hello(req: &mut HttpRequest<'_>, captures: Vec<&'_ str>) -> HttpResult {
-    // println!("{:?}", &req.get_headers().await.map_err(|e| { HandleError::ReqError(e) })?);
+    println!("{:?}", req.header.paras.get("Connection"));
     Ok(HttpResponse::from_html_file("./asset/hello.html").await)
 }
 
@@ -26,10 +26,6 @@ async fn main()  {
         .at("/hello")
         .register("", ep_wrap!(hello))
         .register("/{}", ep_wrap!(hello))
-        .app()
-        .registrar()
-        .get()
-        .register("{a}", ep_wrap!(notfound))
         .app()
         .run().await;
 }

@@ -18,6 +18,3 @@ pub use middleware::*;
 
 mod app;
 pub use app::{Application, RouteRegistrar};
-
-mod connection_pool;
-pub use connection_pool::*;

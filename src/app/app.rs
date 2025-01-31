@@ -1,13 +1,13 @@
-use std::sync::Arc;
-
-use tokio::{io, net::TcpListener, spawn, task::yield_now};
-
+use std::{sync::{atomic::AtomicU64, Arc}, time::Duration};
+use tokio::{io::{self, BufReader}, net:: TcpListener, spawn, sync::Mutex, task::yield_now, time::Instant};
 use crate::{http::Method, app::{EndPoint, MethodSet, Processor}};
 
+use super::processor;
 
 pub struct Application {
     pub listeners: Vec<TcpListener>,
     pub processor: Processor,
+    pub conns_count: AtomicU64,
 }
 
 impl Application {
@@ -16,26 +16,48 @@ impl Application {
         Application {
             listeners: Vec::new(),
             processor: Processor::new(),
+            conns_count: AtomicU64::new(0),
         }
     }
 
     pub async fn run(self) {
         let processor = Arc::new(self.processor);
+        let conns_count = Arc::new(self.conns_count);
         for listener in self.listeners {
             let loc_processor = processor.clone();
+            let conns_count = conns_count.clone();
             spawn(async move {
                 loop {
                     if let Ok((stream, _)) = listener.accept().await {
                         let loc_processor = loc_processor.clone();
+                        let conns_count = conns_count.clone();
                         spawn(async move {
-                            if let Err(e) = loc_processor.handle(stream).await {
-                                println!("Handle Error: {:?}", e);
+                            println!("Connection Create");
+                            conns_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            let (rx, mut tx) = stream.into_split();
+                            let mut buf_rx = BufReader::new(rx);
+                            let start_instant = Instant::now();
+                            while conns_count.load(std::sync::atomic::Ordering::Relaxed) < 20
+                                    // very bad
+                                    && start_instant + Duration::from_secs(5) >= Instant::now() {
+                                match loc_processor.handle(&mut buf_rx, &mut tx).await {
+                                    Ok(resp) => {
+                                        match resp.connect_state {
+                                            super::ConnectionState::Opening => {},
+                                            super::ConnectionState::Closed => break,
+                                        }
+                                    },
+                                    Err(e) => println!("Handle Error: {:?}", e),
+                                }
                             }
+                            println!("Connection End");
+                            conns_count.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                         });
                     }
                 }
             });
         }
+        // connection_pool.run(processor, connection_sender).await;
         loop {
             yield_now().await;
         }

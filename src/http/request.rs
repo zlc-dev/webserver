@@ -32,27 +32,31 @@ impl Method {
             "CONNECT" => Some(Method::CONNECT),
             _ => None
         }
-    } 
-}
+    }
 
-impl Display for Method {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub fn to_str(&self) -> &'static str {
         match self {
-            Method::GET => f.write_str("GET"),
-            Method::POST => f.write_str("POST"),
-            Method::PUT => f.write_str("PUT"),
-            Method::DELETE => f.write_str("DELETE"),
-            Method::PATCH => f.write_str("PATCH"),
-            Method::HEAD => f.write_str("HEAD"),
-            Method::OPTIONS => f.write_str("OPTIONS"),
-            Method::TRACE => f.write_str("TRACE"),
-            Method::CONNECT => f.write_str("CONNECT"),
+            Method::GET => "GET",
+            Method::POST => "POST",
+            Method::PUT => "PUT",
+            Method::DELETE => "DELETE",
+            Method::PATCH => "PATCH",
+            Method::HEAD => "HEAD",
+            Method::OPTIONS => "OPTIONS",
+            Method::TRACE => "TRACE",
+            Method::CONNECT => "CONNECT",
         }
     }
 }
 
-#[derive(Debug)]
-enum HttpVersion {
+impl Display for Method {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum HttpVersion {
     HTTP1_0,
     HTTP1_1,
 }
@@ -64,12 +68,27 @@ impl HttpVersion {
             "HTTP/1.1" => Some(HttpVersion::HTTP1_1),
             _ => None
         }
-    } 
+    }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            HttpVersion::HTTP1_0 => "HTTP/1.0",
+            HttpVersion::HTTP1_1 => "HTTP/1.1",
+        }
+    }
+
+}
+
+impl Display for HttpVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_str())
+    }
 }
 
 #[derive(Debug)]
 pub enum ReqError {
     IOError(std::io::Error),
+    EmptyReq,
     FmtError,
 }
 
@@ -95,7 +114,9 @@ impl HttpRequestHeader {
     
         let mut request_line_buf = Vec::<u8>::with_capacity(1024);
 
-        buf_reader.read_until_crlf(&mut request_line_buf).await.map_err(|e| {ReqError::IOError(e)})?;
+        if 0 == buf_reader.read_until_crlf(&mut request_line_buf).await.map_err(|e| {ReqError::IOError(e)})? {
+            return Err(ReqError::EmptyReq);
+        }
 
         let request_line ;
         unsafe {
@@ -139,10 +160,6 @@ pub struct HttpRequest<'a> {
     url_paras: Option<Vec<&'a str>>,
     body: Option<Vec<u8>>,
     buf_reader: &'a mut (dyn AsyncBufRead + Unpin + Send), 
-}
-
-unsafe impl<'a> Sync for HttpRequest<'a> {
-    
 }
 
 impl Debug for HttpRequest<'_> {
